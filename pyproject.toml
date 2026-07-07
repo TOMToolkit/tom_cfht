@@ -1,8 +1,8 @@
 [project]
-name = "tom-app"
-description = "App description here"
+name = "tom-cfht"
+description = "Canada-France-Hawaii Telescope facility module for TOM Toolkit"
 authors = [
-    {name = "Your Name",email = "you@example.com"}
+    {name = "William Lindstrom", email = "llindstrom@lco.global"},
 ]
 maintainers = [
     {name = "Joey Chatelain", email = "jchate6@lco.global"},
@@ -11,7 +11,7 @@ maintainers = [
 ]
 license = {text = "GPL-3.0-only"}
 readme = "README.md"
-repository = "https://github.com/TOMToolkit/tom_app"
+repository = "https://github.com/TOMToolkit/tom_cfht"
 dynamic = ["version"]
 requires-python = ">=3.10,<3.14"
 dependencies = [

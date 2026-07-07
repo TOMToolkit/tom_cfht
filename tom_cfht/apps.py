@@ -1,6 +1,6 @@
 from django.apps import AppConfig
 
 
-class TomAppConfig(AppConfig):
+class TomCFHTConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
-    name = 'tom_app'
+    name = 'tom_cfht'
