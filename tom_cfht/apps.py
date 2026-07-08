@@ -5,9 +5,6 @@ from django.urls import path, include
 class TomCFHTConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'tom_cfht'  # python path to the application, like 'django.contrib.admin'
-    label = 'cfht'  # Short name for the application, e.g. 'admin' WARNING: used in database tables and migrations
-
-    # we don't have any nav_items or target_detail_buttons for this app
 
     def include_url_paths(self):
         """
