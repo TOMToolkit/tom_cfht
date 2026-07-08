@@ -17,7 +17,9 @@
             <dt class="col-sm-6">{% verbose_name user key %}</dt>
             <dd class="col-sm-6">{{ value|default:"(not set)" }}</dd>
         {% empty %}
-            <p>No CFHTFacility Profile yet for this user.</p>
+            {% if not cfht_profile %}
+                <p>No CFHTFacility Profile yet for this user.</p>
+            {% endif %}
         {% endfor %}
         {# cfht_access_token is rendered with the revealable-password partial. The plaintext is #}
         {# passed in via the cfht_profile_data templatetag using direct attribute access. #}
