@@ -17,4 +17,3 @@ class CFHTProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
 
     cfht_access_token = EncryptedModelField(null=True, blank=True)
-

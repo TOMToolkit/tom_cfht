@@ -27,5 +27,3 @@ class TomCFHTConfig(AppConfig):
         """
         return [{'partial': f'{self.name}/partials/profile_cfht.html',
                  'context': f'{self.name}.templatetags.cfht_extras.cfht_profile_data'}]
-
-
