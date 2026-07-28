@@ -1,0 +1,42 @@
+{% if error %}
+  <div class="alert alert-warning mb-0">
+    Could not reach Kealahou: {{ error }}<br>
+    <small>Check the API access token on your <a href="{% url 'user-profile' %}">user profile</a>
+      (generate one on the Kealahou <em>Manage&nbsp;Tokens</em> page &mdash; the web-UI password will not work).</small>
+  </div>
+{% elif not program_rows %}
+  <p class="text-muted mb-0">No observing programs found for your Kealahou account.</p>
+{% else %}
+  {# one lazy-loaded tab per observing program #}
+  <ul class="nav nav-tabs" role="tablist">
+    {% for program in program_rows %}
+      <li class="nav-item" role="presentation">
+        <button class="nav-link {% if forloop.first %}active{% endif %}" type="button" role="tab"
+                data-bs-toggle="tab" data-bs-target="#program-pane-{{ program.program_token }}"
+                hx-get="{% url 'tom_cfht:program-panel' program.program_token %}"
+                hx-target="#program-panel-{{ program.program_token }}"
+                hx-swap="innerHTML"
+                hx-trigger="{% if forloop.first %}load once{% else %}click once{% endif %}">
+          {{ program.program_token }} &middot; {{ program.instrument }}
+        </button>
+      </li>
+    {% endfor %}
+  </ul>
+  <div class="tab-content">
+    {% for program in program_rows %}
+      <div class="tab-pane fade {% if forloop.first %}show active{% endif %}"
+           id="program-pane-{{ program.program_token }}" role="tabpanel">
+        <p class="text-muted mt-2 mb-2">
+          {{ program.title }} &mdash; PI {{ program.pi_name }} &mdash; {{ program.program_type }}
+          {% if program.percent_complete is not None %}&mdash; {{ program.percent_complete }}% complete{% endif %}
+        </p>
+        <div id="program-panel-{{ program.program_token }}">
+          <div class="text-muted">
+            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+            Loading&hellip;
+          </div>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+{% endif %}

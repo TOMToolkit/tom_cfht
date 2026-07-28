@@ -2,8 +2,14 @@ from __future__ import annotations
 
 from crispy_forms.layout import Layout
 from django import forms
+from django.core.exceptions import ImproperlyConfigured
 
-from tom_observations.facility import BaseRoboticObservationFacility, BaseRoboticObservationForm
+from aeonlib.cfht.facility import CFHTFacility as AeonCFHTFacility
+from aeonlib.cfht.models import ProgramInfo
+
+from tom_observations.facility import BaseRoboticObservationFacility, BaseRoboticObservationForm, CredentialStatus
+
+from tom_cfht.models import CFHTProfile
 
 
 class CFHTFacilityForm(BaseRoboticObservationForm):
@@ -19,6 +25,9 @@ class CFHTFacilityForm(BaseRoboticObservationForm):
 
 class CFHTFacility(BaseRoboticObservationFacility):
     name = 'CFHT'
+    # Facility-specific observation form page: adds the Kealahou target status/upload panel.
+    # ObservationCreateView.get_template_names() tries this template first.
+    template_name = 'tom_cfht/observation_form.html'
     observation_types: list[tuple[str, str]] = [
         ('OBSERVATION', 'Custom Observation')
     ]
@@ -26,6 +35,49 @@ class CFHTFacility(BaseRoboticObservationFacility):
     observation_forms: dict[str, type[BaseRoboticObservationForm]] = {
         'OBSERVATION': CFHTFacilityForm,
     }
+
+    def get_access_token(self) -> str:
+        """Return the Kealahou API access token for the current user.
+
+        The per-user token from the ``CFHTProfile`` (set via ``set_user()``) takes
+        precedence; falls back to the TOM-wide default in
+        ``settings.FACILITIES['CFHT']['CFHT_ACCESS_TOKEN']``. Tracks the outcome in
+        ``self.credential_status``.
+
+        Note: this is the Bearer credential for API authentication -- unrelated to
+        Kealahou's entity identifiers, which are unfortunately also called "tokens".
+
+        Raises:
+            ImproperlyConfigured: if neither source provides a token.
+        """
+        if self.user is not None and self.user.is_authenticated:
+            try:
+                profile_access_token = str(self.user.cfhtprofile.cfht_access_token or '').strip()
+            except CFHTProfile.DoesNotExist:
+                profile_access_token = ''
+            if profile_access_token:
+                self.credential_status = CredentialStatus.USING_USER_CREDS
+                return profile_access_token
+
+        # fall back to the TOM-wide default from settings.FACILITIES
+        setting_credentials = self._get_setting_credentials('CFHT', ['CFHT_ACCESS_TOKEN'])
+        default_access_token = str(setting_credentials['CFHT_ACCESS_TOKEN'] or '').strip()
+        if self._is_credential_empty(default_access_token):
+            self.credential_status = CredentialStatus.PROFILE_EMPTY
+            raise ImproperlyConfigured(
+                'No CFHT access token found. Generate one on the Kealahou "Manage Tokens" page and '
+                "save it in your CFHT user profile (or in settings.FACILITIES['CFHT'])."
+            )
+        self.credential_status = CredentialStatus.USING_DEFAULTS
+        return default_access_token
+
+    def get_aeon_facility(self) -> AeonCFHTFacility:
+        """Return an aeonlib Kealahou client authenticated as the current user."""
+        return AeonCFHTFacility(access_token=self.get_access_token())
+
+    def get_observing_programs(self) -> list[ProgramInfo]:
+        """Return the current user's CFHT observing programs from the Kealahou API."""
+        return self.get_aeon_facility().programs()
 
     def data_products(self):
         pass

@@ -1,0 +1,40 @@
+{# The prerequisite gate: a program needs an associated Target Grouping before target #}
+{# syncing can proceed. Context: `gate` (see views._target_grouping_gate_context).    #}
+<div class="alert alert-info">
+  <p class="mb-2">
+    Program <strong>{{ gate.program_token }}</strong> is not yet associated with a Target Grouping.
+    Membership in the Target Grouping is what marks a target for syncing with this program:
+    add a target to mark it for upload, downloads from Kealahou land in it, and removing a
+    member withdraws that target from TOM-side syncing.
+  </p>
+  <form class="row row-cols-auto g-2 align-items-center">
+    {% csrf_token %}
+    <input type="hidden" name="origin" value="{{ gate.origin }}">
+    {% if gate.target %}<input type="hidden" name="target_id" value="{{ gate.target.id }}">{% endif %}
+    <div class="col">
+      <select class="form-select form-select-sm" name="target_list_id">
+        <option value="" selected>&mdash; create a new Target Grouping &mdash;</option>
+        {% for target_list in gate.available_target_lists %}
+          <option value="{{ target_list.id }}">{{ target_list.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col">
+      <input type="text" class="form-control form-control-sm" name="new_target_list_name"
+             value="{{ gate.default_target_list_name }}"
+             title="Name for the new Target Grouping (ignored if an existing one is selected)">
+    </div>
+    <div class="col">
+      <button class="btn btn-sm btn-primary"
+              hx-post="{% url 'tom_cfht:associate-target-grouping' gate.program_token %}"
+              {% if gate.origin == 'target-status' %}
+                hx-target="#kealahou-target-status"
+              {% else %}
+                hx-target="#cfht-targets-{{ gate.program_token }}"
+              {% endif %}
+              hx-swap="outerHTML">
+        Use this Target Grouping
+      </button>
+    </div>
+  </form>
+</div>
