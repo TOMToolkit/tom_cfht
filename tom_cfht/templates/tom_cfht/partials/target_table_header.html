@@ -1,0 +1,30 @@
+{# Shared header for the three aligned sync tables (see cfht.css for the column widths). #}
+{# Include with: show_checkbox (select-all checkbox vs empty placeholder column) and      #}
+{# annotate_required (label the field columns "(required by <instrument>)" -- upload      #}
+{# table only). magnitude_band/instrument/needs_* come from the surrounding context.      #}
+<thead>
+  <tr>
+    <th class="cfht-col-select">
+      {% if show_checkbox %}
+        <input type="checkbox" title="select all"
+               onclick="this.closest('table').querySelectorAll('input[type=checkbox]').forEach(cb => cb.checked = this.checked)">
+      {% endif %}
+    </th>
+    <th class="cfht-col-name text-start">Name</th>
+    <th class="cfht-col-coord">RA</th>
+    <th class="cfht-col-coord">Dec</th>
+    <th class="cfht-col-field">{{ magnitude_band }} mag
+      {% if annotate_required %}<small class="text-muted fw-normal">(required by {{ instrument }})</small>{% endif %}</th>
+    {% if needs_temperature %}
+      <th class="cfht-col-field">T<sub>eff</sub> (K)
+        {% if annotate_required %}<small class="text-muted fw-normal">(required by {{ instrument }})</small>{% endif %}</th>
+    {% endif %}
+    {% if needs_radial_velocity %}
+      <th class="cfht-col-field">RV (km/s)
+        {% if annotate_required %}<small class="text-muted fw-normal">(required by {{ instrument }})</small>{% endif %}</th>
+    {% endif %}
+    {# the only width-unclassed column: absorbs ALL surplus width under table-layout #}
+    {# fixed, so every other column renders at exactly its declared width #}
+    <th></th>
+  </tr>
+</thead>

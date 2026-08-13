@@ -7,10 +7,15 @@ register = template.Library()
 
 
 @register.inclusion_tag('tom_cfht/partials/profile_cfht.html')
-def cfht_profile_data(user):
+def cfht_profile_data(user) -> dict:
     """
     Returns the app specific user information as a dictionary to be used in the context of the above partial.
     """
+    # get_or_create so a user who has never saved CFHT info gets an empty profile on first
+    # view, and every path returns the same fully-populated context. (A missing-profile
+    # branch that returned only {'user': ...} left the partial's Edit link reversing with
+    # pk='', which 500'd the profile page on its first visit.)
+    cfht_profile, _ = CFHTProfile.objects.get_or_create(user=user)
 
     # cfht_access_token is rendered separately via tom_common's revealable_password_input
     # partial, so exclude it from the auto-iteration loop. model_to_dict goes
@@ -18,16 +23,9 @@ def cfht_profile_data(user):
     # placeholder string for security; the partial needs the actual plaintext,
     # which only direct attribute access provides.
     exclude_fields = ['user', 'id', 'cfht_access_token']
-    try:
-        cfht_profile_dict = model_to_dict(user.cfhtprofile, exclude=exclude_fields)
-        profile_data = {
-            'user': user,
-            'cfht_profile': user.cfhtprofile,
-            'cfht_profile_data': cfht_profile_dict,
-            'cfht_access_token': user.cfhtprofile.cfht_access_token,  # direct access → plaintext
-        }
-        return profile_data
-    except CFHTProfile.DoesNotExist:
-        CFHTProfile.objects.create(user=user)
-        profile_data = {'user': user}
-        return profile_data
+    return {
+        'user': user,
+        'cfht_profile': cfht_profile,
+        'cfht_profile_data': model_to_dict(cfht_profile, exclude=exclude_fields),
+        'cfht_access_token': cfht_profile.cfht_access_token,  # direct access → plaintext
+    }

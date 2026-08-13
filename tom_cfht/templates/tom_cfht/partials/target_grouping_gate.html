@@ -12,17 +12,19 @@
     <input type="hidden" name="origin" value="{{ gate.origin }}">
     {% if gate.target %}<input type="hidden" name="target_id" value="{{ gate.target.id }}">{% endif %}
     <div class="col">
-      <select class="form-select form-select-sm" name="target_list_id">
+      {# the new-name input only applies to the create-new option, so hide it otherwise #}
+      <select class="form-select form-select-sm" name="target_list_id"
+              onchange="this.closest('form').querySelector('.cfht-new-target-list-name').hidden = this.value !== ''">
         <option value="" selected>&mdash; create a new Target Grouping &mdash;</option>
         {% for target_list in gate.available_target_lists %}
           <option value="{{ target_list.id }}">{{ target_list.name }}</option>
         {% endfor %}
       </select>
     </div>
-    <div class="col">
+    <div class="col cfht-new-target-list-name">
       <input type="text" class="form-control form-control-sm" name="new_target_list_name"
              value="{{ gate.default_target_list_name }}"
-             title="Name for the new Target Grouping (ignored if an existing one is selected)">
+             title="Name for the new Target Grouping">
     </div>
     <div class="col">
       <button class="btn btn-sm btn-primary"

@@ -31,6 +31,7 @@ from tom_targets.models import Target, TargetList
 from tom_cfht import kealahou
 from tom_cfht.cfht import CFHTFacility
 from tom_cfht.models import CFHTProfile, KealahouProgramAssociation, KealahouTargetLink
+from tom_cfht.templatetags.cfht_extras import cfht_profile_data
 from tom_cfht.tests.factories import NonSiderealTargetFactory, SiderealTargetFactory
 
 PROGRAM_TOKEN = '25BE25'
@@ -387,13 +388,18 @@ class TestFacilityPageViews(TestCase):
         self.user = User.objects.create_user(username='astronomer', password='pw')
         self.client.force_login(self.user)
 
-    def test_index_requires_login(self):
+    def test_detail_url_name_resolves(self):
+        """CFHTFacility.detail_url_name must reverse to the mounted detail page --
+        its namespace half is urls.py's app_name, derived from the AppConfig's name."""
+        self.assertEqual(reverse(CFHTFacility.detail_url_name), '/cfht/')
+
+    def test_detail_requires_login(self):
         self.client.logout()
-        response = self.client.get(reverse('tom_cfht:facility-index'))
+        response = self.client.get(reverse('tom_cfht:facility-detail'))
         self.assertEqual(response.status_code, 302)
 
-    def test_index_renders_static_info(self):
-        response = self.client.get(reverse('tom_cfht:facility-index'))
+    def test_detail_renders_static_info(self):
+        response = self.client.get(reverse('tom_cfht:facility-detail'))
         self.assertContains(response, 'Canada-France-Hawaii Telescope')
         self.assertContains(response, 'Observing Programs')
 
@@ -466,8 +472,8 @@ class TestFacilityPageViews(TestCase):
         self.assertContains(response, 'with discrepancies')
         self.assertContains(response, 'KealahouOnly')
         # per-section action buttons render only when their bucket has rows
-        self.assertContains(response, 'Download selected targets')  # one kealahou-only row above
-        self.assertNotContains(response, 'Upload selected targets')  # tom_only is empty
+        self.assertContains(response, 'Sync selected targets to TOM')  # one kealahou-only row above
+        self.assertNotContains(response, 'Sync selected targets to Kealahou')  # tom_only is empty
 
     @mock.patch('tom_cfht.views.CFHTFacility')
     def test_sync_selected_acts_on_exactly_the_checked_rows(self, mock_facility_class):
@@ -549,6 +555,60 @@ class TestFacilityPageViews(TestCase):
         self.assertNotContains(response, 'Add to Target Grouping')
 
     @mock.patch('tom_cfht.views.CFHTFacility')
+    def test_unassociate_target_grouping_retriggers_gate(self, mock_facility_class):
+        association = make_association()
+        linked_target = SiderealTargetFactory.create(name='SurvivesUnassociate', pm_ra=None, pm_dec=None)
+        association.target_list.targets.add(linked_target)
+        KealahouTargetLink.objects.create(target=linked_target, program_token=PROGRAM_TOKEN,
+                                          kealahou_target_token=f'{PROGRAM_TOKEN}-1000000012', version=1)
+        aeon_facility = mock_facility_class.return_value.get_aeon_facility.return_value
+        aeon_facility.programs.return_value = [make_program()]
+
+        response = self.client.post(reverse('tom_cfht:unassociate-target-grouping', args=[PROGRAM_TOKEN]))
+
+        self.assertEqual(response.status_code, 200)
+        # the association is gone and the gate is back...
+        self.assertFalse(KealahouProgramAssociation.objects.filter(program_token=PROGRAM_TOKEN).exists())
+        self.assertContains(response, 'not yet associated with a Target Grouping')
+        self.assertContains(response, 'no longer associated')  # confirmation message shows with the gate
+        # ...while the Target Grouping, its members, and the Kealahou link all survive
+        self.assertTrue(TargetList.objects.filter(name='CFHT-MEGACAM-25BE25').exists())
+        self.assertIn(linked_target, TargetList.objects.get(name='CFHT-MEGACAM-25BE25').targets.all())
+        self.assertTrue(KealahouTargetLink.objects.filter(target=linked_target).exists())
+
+    @mock.patch('tom_cfht.views.CFHTFacility')
+    def test_program_pulldown_only_with_multiple_programs(self, mock_facility_class):
+        target = SiderealTargetFactory.create(name='PulldownTarget', pm_ra=None, pm_dec=None)
+        status_url = reverse('tom_cfht:kealahou-target-status')
+
+        # one program: no pulldown, that program renders directly
+        mock_facility_class.return_value.get_observing_programs.return_value = [make_program()]
+        response = self.client.get(status_url, {'target_id': target.id})
+        self.assertNotContains(response, 'name="program_token" class="form-select')
+        self.assertContains(response, '(MEGACAM)')
+
+        # two programs: pulldown appears; explicit selection renders the chosen program
+        mock_facility_class.return_value.get_observing_programs.return_value = [
+            make_program(), make_program('25BE30', Instrument.spirou)]
+        response = self.client.get(status_url, {'target_id': target.id})
+        self.assertContains(response, 'name="program_token" class="form-select')
+        self.assertContains(response, '25BE30 &mdash;')
+        self.assertContains(response, '(MEGACAM)')  # default: first program
+        response = self.client.get(status_url, {'target_id': target.id, 'program_token': '25BE30'})
+        self.assertContains(response, '(SPIROU)')
+        self.assertNotContains(response, '(MEGACAM)')
+
+    @mock.patch('tom_cfht.views.CFHTFacility')
+    def test_pulldown_defaults_to_a_linked_program(self, mock_facility_class):
+        target = SiderealTargetFactory.create(name='LinkedDefault', pm_ra=None, pm_dec=None)
+        KealahouTargetLink.objects.create(target=target, program_token='25BE30',
+                                          kealahou_target_token='25BE30-1000000011', version=1)
+        mock_facility_class.return_value.get_observing_programs.return_value = [
+            make_program(), make_program('25BE30', Instrument.spirou)]
+        response = self.client.get(reverse('tom_cfht:kealahou-target-status'), {'target_id': target.id})
+        self.assertContains(response, '(SPIROU)')  # the linked program wins over list order
+
+    @mock.patch('tom_cfht.views.CFHTFacility')
     def test_add_target_to_target_grouping_endpoint(self, mock_facility_class):
         association = make_association()
         target = SiderealTargetFactory.create(name='ReAdd', pm_ra=None, pm_dec=None)
@@ -563,3 +623,47 @@ class TestFacilityPageViews(TestCase):
     def test_facility_declares_observation_form_template(self):
         # ObservationCreateView.get_template_names() picks this up (tom_observations/views.py)
         self.assertEqual(CFHTFacility.template_name, 'tom_cfht/observation_form.html')
+
+
+class TestCFHTProfileData(TestCase):
+
+    def test_first_visit_creates_profile_and_full_context(self):
+        """Regression: the first profile-page visit must render, not 500 (Edit link needs pk)."""
+        user = User.objects.create_user(username='cfht_new_user', password='s3cret')
+        context = cfht_profile_data(user)
+        self.assertEqual(context['cfht_profile'].user, user)
+        self.assertIn('cfht_profile_data', context)
+        self.assertIn('cfht_access_token', context)
+
+
+class TestProfileUpdateViewAuth(TestCase):
+    """The profile holds the user's Kealahou API token; the update view must be owner-only."""
+
+    def test_anonymous_is_redirected_to_login(self):
+        owner = User.objects.create_user(username='cfht_owner', password='s3cret')
+        profile, _ = CFHTProfile.objects.get_or_create(user=owner)
+        response = self.client.get(reverse('tom_cfht:cfht-profile-update', kwargs={'pk': profile.pk}))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('login', response.url)
+
+    def test_user_cannot_update_another_users_profile(self):
+        owner = User.objects.create_user(username='cfht_owner', password='s3cret')
+        other = User.objects.create_user(username='cfht_other', password='s3cret')
+        profile, _ = CFHTProfile.objects.get_or_create(user=owner)
+        self.client.force_login(other)
+        response = self.client.get(reverse('tom_cfht:cfht-profile-update', kwargs={'pk': profile.pk}))
+        self.assertEqual(response.status_code, 404)
+
+
+class TestMutatingEndpointsRequirePost(TestCase):
+    """GET must never mutate: the sync/associate htmx endpoints are POST-only."""
+
+    def test_unassociate_get_is_405_and_deletes_nothing(self):
+        user = User.objects.create_user(username='cfht_user', password='s3cret')
+        self.client.force_login(user)
+        target_list = TargetList.objects.create(name='A Target Grouping')
+        KealahouProgramAssociation.objects.create(program_token=PROGRAM_TOKEN, target_list=target_list)
+        response = self.client.get(
+            reverse('tom_cfht:unassociate-target-grouping', kwargs={'program_token': PROGRAM_TOKEN}))
+        self.assertEqual(response.status_code, 405)
+        self.assertEqual(KealahouProgramAssociation.objects.count(), 1)

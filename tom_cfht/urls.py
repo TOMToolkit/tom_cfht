@@ -1,7 +1,8 @@
 from django.urls import path
 
+from .apps import TomCFHTConfig
 from .views import (
-    CFHTFacilityIndexView,
+    CFHTFacilityDetailView,
     ProfileUpdateView,
     add_target_to_target_grouping,
     associate_target_grouping,
@@ -10,16 +11,19 @@ from .views import (
     program_panel,
     sync_selected_targets,
     targets_section,
+    unassociate_target_grouping,
     upload_single_target,
 )
 
 
-app_name = 'tom_cfht'
+# app_name supplies the '<namespace>:' half of this app's URL names, e.g. {% url 'tom_cfht:<name>' %}.
+# Deriving app_name from the AppConfig.name means the namespace and the package name can never disagree.
+app_name = TomCFHTConfig.name  # the AppConfig.name is thus the single-source of 'truth'
 
 urlpatterns = [
-    # facility landing page, linked from the navbar "Facilities" menu
-    # (see TomCFHTConfig.observation_facilities())
-    path('', CFHTFacilityIndexView.as_view(), name='facility-index'),
+    # facility detail page, linked from the navbar "Facilities" menu
+    # (declared as CFHTFacility.detail_url_name in cfht.py)
+    path('', CFHTFacilityDetailView.as_view(), name='facility-detail'),
 
     # htmx partials for the facility page (program tabs and their sections)
     path('observing-programs/', observing_programs, name='observing-programs'),
@@ -27,6 +31,8 @@ urlpatterns = [
     path('programs/<str:program_token>/targets-section/', targets_section, name='targets-section'),
     path('programs/<str:program_token>/associate-target-grouping/', associate_target_grouping,
          name='associate-target-grouping'),
+    path('programs/<str:program_token>/unassociate-target-grouping/', unassociate_target_grouping,
+         name='unassociate-target-grouping'),
     path('programs/<str:program_token>/sync-selected-targets/', sync_selected_targets,
          name='sync-selected-targets'),
 

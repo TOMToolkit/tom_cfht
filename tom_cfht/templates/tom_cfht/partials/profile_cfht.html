@@ -10,11 +10,11 @@
         </div>
     </div>
   <div class="card-body">
-      <p>This the place to store user-specific  information for your app.</p>
+      <p>User-specific CFHT settings (Kealahou API access token), used on this user's behalf.</p>
       <hr>
     <dl class="row">
         {% for key, value in cfht_profile_data.items %}
-            <dt class="col-sm-6">{% verbose_name user key %}</dt>
+            <dt class="col-sm-6">{% verbose_name cfht_profile key %}</dt>
             <dd class="col-sm-6">{{ value|default:"(not set)" }}</dd>
         {% empty %}
             {% if not cfht_profile %}

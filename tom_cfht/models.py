@@ -9,7 +9,6 @@ from tom_targets.models import TargetList
 
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
 
 
 class CFHTProfile(models.Model):

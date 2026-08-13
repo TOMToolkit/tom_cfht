@@ -4,12 +4,14 @@ import logging
 
 import httpx
 import pydantic
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import ImproperlyConfigured
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import render
 from django.urls import reverse_lazy
+from django.views.decorators.http import require_POST
 from django.views.generic import TemplateView
 from django.views.generic.edit import UpdateView
 
@@ -28,15 +30,15 @@ logger = logging.getLogger(__name__)
 KEALAHOU_ERRORS = (httpx.HTTPError, pydantic.ValidationError, ImproperlyConfigured, ValueError)
 
 
-class ProfileUpdateView(UpdateView):
+class ProfileUpdateView(LoginRequiredMixin, UpdateView):
     """
     View that handles updating of a user's ``CFHTProfile``.
 
     The CFHT Facility has a ``CFHTProfile`` model (see ``models.py``). This view updates
     the properties of that model.
 
-    The ``CFHTProfile`` properties are displayed by the `cfht_user_profile.html`` template.
-    This typically happens on the on the User Profile page via the ``show_app_profiles``
+    The ``CFHTProfile`` properties are displayed by the ``partials/profile_cfht.html`` template.
+    This typically happens on the User Profile page via the ``show_app_profiles``
     inclusion tag (see ``tom_base/tom_common/templates/tom_common/user_profile.html`` and
     ``tom_base/tom_common/templatetags/user_extras.py::show_app_profiles``).
     """
@@ -44,18 +46,23 @@ class ProfileUpdateView(UpdateView):
     template_name = 'tom_cfht/update_profile.html'
     fields = ['cfht_access_token']  # required by ModelFormMixin, a base class of this ProfileUpdateView
 
+    def get_queryset(self):
+        # Profiles hold per-user credentials: scope the queryset to the requesting user so
+        # nobody can read or overwrite another user's Kealahou token (others' pks 404).
+        return CFHTProfile.objects.filter(user=self.request.user)
+
     def get_success_url(self):
         return reverse_lazy('user-profile')  # back to the TOMToolkit user-profile
 
 
-class CFHTFacilityIndexView(LoginRequiredMixin, TemplateView):
+class CFHTFacilityDetailView(LoginRequiredMixin, TemplateView):
     """The CFHT facility page (``/cfht/``), linked from the navbar Facilities menu.
 
     Renders immediately with static facility information; the observing-program tabs
     (and each program's sections) load asynchronously via htmx so a slow or unavailable
     Kealahou API never blocks the page.
     """
-    template_name = 'tom_cfht/facility_index.html'
+    template_name = 'tom_cfht/facility_detail.html'
 
     def get_context_data(self, **kwargs) -> dict:
         context = super().get_context_data(**kwargs)
@@ -124,13 +131,18 @@ def _instrument_requirements_context(instrument: Instrument | None) -> dict:
     }
 
 
-def _split_result_messages(result_messages: list[kealahou.ResultMessage] | None) -> dict:
-    """Split ResultMessages into context lists: failures (danger alert) vs notices (info alert)."""
-    result_messages = result_messages or []
-    return {
-        'error_messages': [message.text for message in result_messages if not message.success],
-        'info_messages': [message.text for message in result_messages if message.success],
-    }
+def _queue_result_messages(request: HttpRequest,
+                           result_messages: list[kealahou.ResultMessage] | None) -> None:
+    """Hand the service layer's ResultMessages to the django messages framework.
+
+    The fragments render them via tom_common's messages partial, whose hx-swap-oob
+    attribute lets htmx lift them into the page-level #messages container.
+    """
+    for result_message in result_messages or []:
+        if result_message.success:
+            messages.success(request, result_message.text)
+        else:
+            messages.error(request, result_message.text)
 
 
 def _render_targets_section(request: HttpRequest, program_token: str,
@@ -142,6 +154,7 @@ def _render_targets_section(request: HttpRequest, program_token: str,
     POST endpoints (associate, sync-selected) so the section always reflects current state.
     """
     template_name = 'tom_cfht/partials/targets_section.html'
+    _queue_result_messages(request, result_messages)  # rendered via tom_common's messages partial
     try:
         facility = _facility_for(request)
         aeon_facility = facility.get_aeon_facility()
@@ -173,15 +186,18 @@ def _render_targets_section(request: HttpRequest, program_token: str,
         'sync_state': sync_state,
         'target_list': association.target_list,
     }
-    context.update(_split_result_messages(result_messages))
     context.update(_instrument_requirements_context(instrument))
     return render(request, template_name, context)
 
 
 @login_required
 def observing_programs(request: HttpRequest) -> HttpResponse:
-    """htmx partial: nav-tabs bar with one lazy-loaded tab per CFHT observing program."""
-    template_name = 'tom_cfht/partials/observing_programs.html'
+    """htmx fragment: nav-tabs bar with one lazy-loaded tab per CFHT observing program.
+
+    The fragment lives in facility_detail.html as a django-template-partials partialdef,
+    since it only ever renders inside that page.
+    """
+    template_name = 'tom_cfht/facility_detail.html#observing-programs'
     try:
         facility = _facility_for(request)
         programs = facility.get_observing_programs()
@@ -217,9 +233,9 @@ def program_panel(request: HttpRequest, program_token: str) -> HttpResponse:
 
     Renders instantly with no Kealahou API call; the Targets section lazy-loads itself,
     and the Observing Templates / Observing Groups / Exposures sections are stubs until
-    AEONlib wraps their endpoints.
+    AEONlib wraps their endpoints. The fragment is a partialdef in facility_detail.html.
     """
-    return render(request, 'tom_cfht/partials/program_panel.html', {'program_token': program_token})
+    return render(request, 'tom_cfht/facility_detail.html#program-panel', {'program_token': program_token})
 
 
 @login_required
@@ -229,6 +245,7 @@ def targets_section(request: HttpRequest, program_token: str) -> HttpResponse:
 
 
 @login_required
+@require_POST
 def associate_target_grouping(request: HttpRequest, program_token: str) -> HttpResponse:
     """htmx POST: satisfy the prerequisite by associating a Target Grouping with a program.
 
@@ -253,8 +270,27 @@ def associate_target_grouping(request: HttpRequest, program_token: str) -> HttpR
         if target is None:
             return render(request, 'tom_cfht/partials/kealahou_target_status.html',
                           {'error': 'Unknown target.'})
-        return _render_kealahou_status(request, target)
+        return _render_kealahou_status(request, target, selected_program_token=program_token)
     return _render_targets_section(request, program_token)
+
+
+@login_required
+@require_POST
+def unassociate_target_grouping(request: HttpRequest, program_token: str) -> HttpResponse:
+    """htmx POST: remove a program's Target Grouping association, re-triggering the gate.
+
+    Deletes only the association row: the Target Grouping itself, its members, and the
+    ``KealahouTargetLink`` rows all survive, so re-associating (the same Target Grouping or
+    another) simply resumes syncing with the new membership as the TOM-side truth.
+    """
+    association = _association_for(program_token)
+    result_messages = []
+    if association is not None:
+        result_messages.append(kealahou.ResultMessage(
+            f'Program {program_token} is no longer associated with Target Grouping '
+            f'"{association.target_list.name}". Select or create one to resume syncing.'))
+        association.delete()
+    return _render_targets_section(request, program_token, result_messages)
 
 
 def _upload_request_from_post(request: HttpRequest, target: Target) -> kealahou.UploadRequest:
@@ -299,6 +335,7 @@ def _do_upload(request: HttpRequest, program_token: str,
 
 
 @login_required
+@require_POST
 def sync_selected_targets(request: HttpRequest, program_token: str) -> HttpResponse:
     """htmx POST: sync exactly the checked rows, both directions.
 
@@ -337,14 +374,18 @@ def sync_selected_targets(request: HttpRequest, program_token: str) -> HttpRespo
 
 
 def _render_kealahou_status(request: HttpRequest, target: Target,
-                            result_messages: list[kealahou.ResultMessage] | None = None) -> HttpResponse:
+                            result_messages: list[kealahou.ResultMessage] | None = None,
+                            selected_program_token: str | None = None) -> HttpResponse:
     """(Re-)render the observation form's Kealahou status fragment for one target.
 
-    Each program row walks a state chain and shows exactly the next action:
-    no association -> Target Grouping gate; not uploaded -> upload button; uploaded but
-    missing from the Target Grouping -> add button; otherwise an "in Kealahou" badge.
+    The fragment presents ONE program at a time: an htmx pulldown selects the program when
+    the user has more than one (default: a program this target is already linked to, else
+    the first). The selected program's row walks a state chain showing exactly the next
+    action: no association -> Target Grouping gate; not uploaded -> upload button; uploaded
+    but missing from the Target Grouping -> add button; otherwise an "in Kealahou" badge.
     """
     template_name = 'tom_cfht/partials/kealahou_target_status.html'
+    _queue_result_messages(request, result_messages)  # rendered via tom_common's messages partial
     try:
         facility = _facility_for(request)
         programs = facility.get_observing_programs()
@@ -352,46 +393,64 @@ def _render_kealahou_status(request: HttpRequest, target: Target,
         logger.warning(f'Kealahou status unavailable for target {target.id}: {e}')
         return render(request, template_name, {'error': str(e), 'target': target})
 
+    programs_by_token = {program.program_data.token: program
+                         for program in programs if program.program_data is not None}
     links_by_program = {link.program_token: link
                         for link in KealahouTargetLink.objects.filter(target=target)}
-    program_statuses = []
-    for program in programs:
+
+    # pick the program to display: explicit selection > a program this target is linked
+    # to > the first program
+    if selected_program_token not in programs_by_token:
+        selected_program_token = next(
+            (program_token for program_token in programs_by_token if program_token in links_by_program),
+            next(iter(programs_by_token), None))
+
+    program_status = None
+    if selected_program_token is not None:
+        program = programs_by_token[selected_program_token]
         program_data = program.program_data
-        if program_data is None:
-            continue
         instrument = _program_instrument(program)
         association = _association_for(program_data.token)
         link = links_by_program.get(program_data.token)
         in_target_list = (association is not None
                           and association.target_list.targets.filter(id=target.id).exists())
-        status = {
+        program_status = {
             'program_token': program_data.token,
             'title': program_data.title,
             'link': link,
             'association': association,
             'in_target_list': in_target_list,
         }
-        status.update(_instrument_requirements_context(instrument))
+        program_status.update(_instrument_requirements_context(instrument))
         if association is None:
-            status['target_grouping_gate'] = _target_grouping_gate_context(
+            program_status['target_grouping_gate'] = _target_grouping_gate_context(
                 program_data.token, instrument, origin='target-status', target=target)
-        program_statuses.append(status)
-    context = {'target': target, 'program_statuses': program_statuses}
-    context.update(_split_result_messages(result_messages))
+
+    context = {
+        'target': target,
+        'program_status': program_status,
+        'selected_program_token': selected_program_token,
+        # pulldown options, shown only when there is a choice to make
+        'program_options': [{'program_token': program_token, 'title': program.program_data.title}
+                            for program_token, program in programs_by_token.items()],
+    }
     return render(request, template_name, context)
 
 
 @login_required
 def kealahou_target_status(request: HttpRequest) -> HttpResponse:
-    """htmx partial for the observation form: this target's Kealahou state per program."""
+    """htmx partial for the observation form: this target's Kealahou state, one program
+    at a time (``program_token`` selects which; see _render_kealahou_status)."""
     try:
         target = Target.objects.get(id=request.GET.get('target_id'))
     except (Target.DoesNotExist, ValueError):
         return render(request, 'tom_cfht/partials/kealahou_target_status.html', {'error': 'Unknown target.'})
-    return _render_kealahou_status(request, target)
+    return _render_kealahou_status(request, target,
+                                   selected_program_token=request.GET.get('program_token'))
 
 
 @login_required
+@require_POST
 def upload_single_target(request: HttpRequest) -> HttpResponse:
     """htmx POST from the observation form: upload one target to one program, then
     re-render the Kealahou status fragment. The upload also adds the target to the
@@ -407,10 +466,12 @@ def upload_single_target(request: HttpRequest) -> HttpResponse:
     except KEALAHOU_ERRORS as e:
         logger.warning(f'Kealahou upload of target {target.id} to {program_token} failed: {e}')
         result_messages = [kealahou.ResultMessage(f'Upload failed: {e}', success=False)]
-    return _render_kealahou_status(request, target, result_messages)
+    return _render_kealahou_status(request, target, result_messages,
+                                   selected_program_token=program_token)
 
 
 @login_required
+@require_POST
 def add_target_to_target_grouping(request: HttpRequest) -> HttpResponse:
     """htmx POST from the observation form: add an already-uploaded target to the
     program's associated Target Grouping (the rare state where it was removed by hand)."""
@@ -428,4 +489,5 @@ def add_target_to_target_grouping(request: HttpRequest) -> HttpResponse:
         association.target_list.targets.add(target)
         result_messages = [kealahou.ResultMessage(
             f'{target.name}: added to Target Grouping "{association.target_list.name}".')]
-    return _render_kealahou_status(request, target, result_messages)
+    return _render_kealahou_status(request, target, result_messages,
+                                   selected_program_token=program_token)

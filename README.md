@@ -11,13 +11,22 @@ Install the module into your TOM environment:
 pip install tom-cfht
 ```
 
-Then, in your project `settings.py`, add `tom_cfht` to your `INSTALLED_APPS` setting:
+Then, in your project `settings.py`, add `tom_cfht` (and `template_partials`, which it uses
+for its htmx page fragments — [django-template-partials](https://github.com/carltongibson/django-template-partials)
+is installed as a dependency and is built into Django 6) to your `INSTALLED_APPS` setting:
 
 ```python
 INSTALLED_APPS = [
     ...
+    'template_partials',
     'tom_cfht',
 ]
+```
+
+Run the migrations to create the module's tables (program associations and target links):
+
+```shell
+python manage.py migrate tom_cfht
 ```
 
 That's it. `tom_cfht` implements the `observation_facilities()` AppConfig integration point,

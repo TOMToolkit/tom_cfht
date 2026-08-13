@@ -1,0 +1,10 @@
+{# Fragment-state alert: rendered in place of a fragment's content when the Kealahou #}
+{# API is unreachable or errored (this is the fragment's state, not transient        #}
+{# feedback -- transient feedback goes through the django messages framework).       #}
+{# Context: error (required), lead (optional prefix), manage_tokens_hint (optional). #}
+<div class="alert alert-warning alert-dismissible fade show mb-0" role="alert">
+  {% if lead %}{{ lead }}: {% endif %}{{ error }}<br>
+  <small>Check the API access token on your <a href="{% url 'user-profile' %}">user profile</a>{% if manage_tokens_hint %}
+    (generate one on the Kealahou <em>Manage&nbsp;Tokens</em> page &mdash; the web-UI password will not work){% endif %}.</small>
+  <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+</div>

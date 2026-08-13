@@ -10,12 +10,14 @@ from tom_common.default_settings import TOMTOOKIT_INSTALLED_APPS, TOMTOOKIT_MIDD
 
 APP_NAME = 'tom_cfht'  # the stand-alone app we are testing
 
-BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), APP_NAME))
+BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))  # the tom_cfht package dir
 
 
 def boot_django():
     settings.configure(
         BASE_DIR=BASE_DIR,
+        # SECURITY WARNING: keep the secret key used in production secret! This is an example key for testing only.
+        SECRET_KEY='v5j-rg7sc+leg-m+vf947vi34+fs1%+$m%*l%sb7^fnwb$-29y',
         DEBUG=True,
         DATABASES={
             'default': {
@@ -24,7 +26,11 @@ def boot_django():
             }
         },
         TOM_NAME='Test TOM',
-        INSTALLED_APPS=TOMTOOKIT_INSTALLED_APPS+[APP_NAME],
+
+        ROOT_URLCONF='tom_common.urls',  # pull in installed app's include_url_paths() (needed to reverse() URLs)
+        # template_partials is required by tom_cfht's templates ({% load partials %}), just as
+        # a TOM installing this app must add it to INSTALLED_APPS (see README.md)
+        INSTALLED_APPS=TOMTOOKIT_INSTALLED_APPS+['template_partials', APP_NAME],
         SITE_ID=1,
         EXTRA_FIELDS={},
         TIME_ZONE='UTC',

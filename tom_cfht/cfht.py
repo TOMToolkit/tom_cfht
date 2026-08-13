@@ -6,9 +6,11 @@ from django.core.exceptions import ImproperlyConfigured
 
 from aeonlib.cfht.facility import CFHTFacility as AeonCFHTFacility
 from aeonlib.cfht.models import ProgramInfo
+from aeonlib.conf import Settings
 
 from tom_observations.facility import BaseRoboticObservationFacility, BaseRoboticObservationForm, CredentialStatus
 
+from tom_cfht.apps import TomCFHTConfig
 from tom_cfht.models import CFHTProfile
 
 
@@ -25,6 +27,9 @@ class CFHTFacilityForm(BaseRoboticObservationForm):
 
 class CFHTFacility(BaseRoboticObservationFacility):
     name = 'CFHT'
+    # Detail page linked from the navbar "Facilities" menu. The AppConfig's name is the
+    # single source of truth for the namespace; guarded by test_detail_url_name_resolves.
+    detail_url_name = f'{TomCFHTConfig.name}:facility-detail'  # 'tom_cfht:facility-detail'
     # Facility-specific observation form page: adds the Kealahou target status/upload panel.
     # ObservationCreateView.get_template_names() tries this template first.
     template_name = 'tom_cfht/observation_form.html'
@@ -73,7 +78,9 @@ class CFHTFacility(BaseRoboticObservationFacility):
 
     def get_aeon_facility(self) -> AeonCFHTFacility:
         """Return an aeonlib Kealahou client authenticated as the current user."""
-        return AeonCFHTFacility(access_token=self.get_access_token())
+        cfht_settings = Settings()
+        cfht_settings.cfht_access_token = self.get_access_token()
+        return AeonCFHTFacility(cfht_settings)
 
     def get_observing_programs(self) -> list[ProgramInfo]:
         """Return the current user's CFHT observing programs from the Kealahou API."""
