@@ -1,0 +1,18 @@
+{% extends 'tom_observations/observation_form.html' %}
+{% load static %}
+{% block additional_css %}
+{{ block.super }}
+<link rel="stylesheet" href="{% static 'tom_cfht/cfht.css' %}">
+{% endblock %}
+{% block content %}
+{# Kealahou state for this target, at the top of the page. Loads asynchronously so a #}
+{# slow/unavailable Kealahou API never blocks the observation form itself. #}
+<div hx-get="{% url 'tom_cfht:kealahou-target-status' %}?target_id={{ target.id }}"
+     hx-trigger="load" hx-swap="outerHTML">
+  <div class="text-muted mt-3">
+    <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+    Checking Kealahou status&hellip;
+  </div>
+</div>
+{{ block.super }}
+{% endblock %}

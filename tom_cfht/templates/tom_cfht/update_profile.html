@@ -1,0 +1,12 @@
+{% extends 'tom_common/base.html' %}
+{% load django_bootstrap5 %}
+{% block title %}Update CFHT Profile{% endblock %}
+{% block content %}
+
+<h3>This is an update form for the CFHT Profile</h3>
+<hr>
+<form method="post">{% csrf_token %}
+    {{ form.as_p }}
+    <input type="submit" value="Update">
+</form>
+{% endblock %}

@@ -1,0 +1,36 @@
+{% load tom_common_extras %}
+
+<div class="card">
+    <div class="card-header bg-dark text-light">
+        <div style="display: flex; justify-content: space-between">
+            <h4 class="card-title">CFHT Facility Info</h4>
+            <div>
+                <a title="Edit" href="{% url 'tom_cfht:cfht-profile-update' pk=cfht_profile.id %}" ><i class="fa fa-pencil" aria-hidden="true"></i></a>
+            </div>
+        </div>
+    </div>
+  <div class="card-body">
+      <p>User-specific CFHT settings (Kealahou API access token), used on this user's behalf.</p>
+      <hr>
+    <dl class="row">
+        {% for key, value in cfht_profile_data.items %}
+            <dt class="col-sm-6">{% verbose_name cfht_profile key %}</dt>
+            <dd class="col-sm-6">{{ value|default:"(not set)" }}</dd>
+        {% empty %}
+            {% if not cfht_profile %}
+                <p>No CFHTFacility Profile yet for this user.</p>
+            {% endif %}
+        {% endfor %}
+        {# cfht_access_token is rendered with the revealable-password partial. The plaintext is #}
+        {# passed in via the cfht_profile_data templatetag using direct attribute access. #}
+        <dt class="col-sm-6">CFHT Access Token</dt>
+        <dd class="col-sm-6">
+            {% if cfht_access_token %}
+                {% include 'tom_common/partials/revealable_password_input.html' with value=cfht_access_token %}
+            {% else %}
+                (not set)
+            {% endif %}
+        </dd>
+    </dl>
+  </div>
+</div>

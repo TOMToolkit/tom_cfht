@@ -1,0 +1,36 @@
+/* tom_cfht facility page styles.
+   Loaded by facility_detail.html and observation_form.html (additional_css block);
+   htmx fragments loaded into those pages resolve these classes against it. */
+
+/* "In Kealahou only" card header: the Kealahou web site's distinctive green */
+.cfht-header-kealahou {
+  background-color: #004600;
+  color: white;
+}
+
+/* "In <Target Grouping> only" card header: fades like the TOM Toolkit logo
+   (solid brand teal into the logo gradient's dark end) */
+.cfht-header-tom {
+  background: linear-gradient(90deg, #0186a5, #026177);
+  color: white;
+}
+
+/* "already in TOM" badge: the dark end of the TOM Toolkit logo gradient */
+.cfht-badge-in-tom {
+  background-color: #026177;
+  color: white;
+}
+
+/* The three aligned sync tables. Fixed layout: column widths come solely from the
+   header cells (identical across the tables), so content -- badges, number inputs --
+   cannot distort them, keeping the tables' columns mutually aligned. */
+.cfht-table {
+  table-layout: fixed;
+}
+
+/* Shared column skeleton. The one column WITHOUT a width class (the trailing tail)
+   absorbs all surplus width, so these render at exactly their declared size. */
+.cfht-col-select { width: 3rem; }
+.cfht-col-name   { width: 22%; }
+.cfht-col-coord  { width: 12%; }
+.cfht-col-field  { width: 13%; }

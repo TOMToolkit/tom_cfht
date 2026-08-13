@@ -1,0 +1,202 @@
+{# The Targets section of a program panel: the Target Grouping gate until the user     #}
+{# associates one, then the four sync buckets. Re-rendered whole by every sync action. #}
+{# Column styling lives in static/tom_cfht/cfht.css; the three aligned tables share    #}
+{# partials/target_table_header.html.                                                  #}
+{# Feedback queued by the views: tom_common's messages partial is hx-swap-oob, and htmx #}
+{# only honors OOB at the response's top level -- so it sits OUTSIDE the fragment root, #}
+{# and its content lands in the page-level #messages container.                         #}
+{% include 'tom_common/partials/messages.html' %}
+<div id="cfht-targets-{{ program_token }}">
+  {% if error %}
+    {% include 'tom_cfht/partials/kealahou_error_alert.html' with lead='Could not load Kealahou targets' %}
+  {% else %}
+    {% if target_grouping_gate %}
+      {% include 'tom_cfht/partials/target_grouping_gate.html' with gate=target_grouping_gate %}
+    {% else %}
+
+    <div class="d-flex align-items-start justify-content-between mb-3">
+      <p class="text-muted mb-0 me-2">
+        Target Grouping: <strong>{{ target_list.name }}</strong> &mdash; membership marks a target
+        for syncing with this program; removing a member withdraws it from TOM-side syncing.
+        Sidereal targets only, for now.
+      </p>
+      <form class="flex-shrink-0">
+        {% csrf_token %}
+        <button class="btn btn-sm btn-outline-secondary"
+                title="Removes this program's Target Grouping association so you can select or create another. The Target Grouping itself, its members, and Kealahou uploads are untouched."
+                hx-post="{% url 'tom_cfht:unassociate-target-grouping' program_token %}"
+                hx-target="#cfht-targets-{{ program_token }}" hx-swap="outerHTML">
+          Change Target Grouping
+        </button>
+      </form>
+    </div>
+
+    {# ---- in Kealahou but not the TOM: check to download ---- #}
+    <form>
+      {% csrf_token %}
+      <div class="card mb-3">
+        <div class="card-header cfht-header-kealahou">
+          In Kealahou only <span class="badge bg-light text-dark">{{ sync_state.kealahou_only|length }}</span>
+          <small class="ms-2">check rows to download them into the TOM</small>
+        </div>
+        <div class="card-body p-2">
+          {% if sync_state.kealahou_only %}
+            <table class="table table-sm mb-0 cfht-table">
+              {% include 'tom_cfht/partials/target_table_header.html' with show_checkbox=True %}
+              <tbody>
+                {% for candidate in sync_state.kealahou_only %}
+                  <tr>
+                    <td><input type="checkbox" name="kealahou_target_token" value="{{ candidate.target_data.token }}"></td>
+                    <td class="text-start" title="{{ candidate.target_data.token }}">{{ candidate.target_data.name }}</td>
+                    <td>{% if candidate.target_data.fixed_target %}{{ candidate.target_data.fixed_target.coordinate.ra|floatformat:5 }}{% endif %}</td>
+                    <td>{% if candidate.target_data.fixed_target %}{{ candidate.target_data.fixed_target.coordinate.dec|floatformat:5 }}{% endif %}</td>
+                    <td>{{ candidate.required_field_values.magnitude|floatformat:2|default:'—' }}</td>
+                    {% if needs_temperature %}
+                      <td>{{ candidate.required_field_values.temperature_effective|floatformat:1|default:'—' }}</td>
+                    {% endif %}
+                    {% if needs_radial_velocity %}
+                      <td>{{ candidate.required_field_values.radial_velocity_kmps|floatformat:1|default:'—' }}</td>
+                    {% endif %}
+                    <td>{% if candidate.existing_target %}
+                          <span class="badge cfht-badge-in-tom" title="A TOM target for this already exists; syncing adds it to {{ target_list.name }}.">already in TOM</span>
+                        {% endif %}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          {% else %}
+            <p class="text-muted mb-0">None.</p>
+          {% endif %}
+        </div>
+        {% if sync_state.kealahou_only %}
+          <div class="card-footer">
+            <button class="btn btn-sm btn-outline-primary"
+                    hx-post="{% url 'tom_cfht:sync-selected-targets' program_token %}"
+                    hx-target="#cfht-targets-{{ program_token }}" hx-swap="outerHTML">
+              Sync selected targets to TOM
+            </button>
+          </div>
+        {% endif %}
+      </div>
+    </form>
+
+    {# ---- in the TOM's Target Grouping but not Kealahou: check to upload ---- #}
+    <form>
+      {% csrf_token %}
+      <div class="card mb-3">
+        <div class="card-header cfht-header-tom">
+          In {{ target_list.name }} only <span class="badge bg-light text-dark">{{ sync_state.tom_only|length }}</span>
+          <small class="ms-2">check rows to upload them to Kealahou</small>
+        </div>
+        <div class="card-body p-2">
+          {% if sync_state.tom_only %}
+            <table class="table table-sm mb-0 cfht-table">
+              {% include 'tom_cfht/partials/target_table_header.html' with show_checkbox=True annotate_required=True %}
+              <tbody>
+                {% for target in sync_state.tom_only %}
+                  <tr>
+                    <td><input type="checkbox" name="target_id" value="{{ target.id }}"></td>
+                    <td class="text-start"><a href="{% url 'targets:detail' target.id %}">{{ target.name }}</a></td>
+                    <td>{{ target.ra|floatformat:5 }}</td>
+                    <td>{{ target.dec|floatformat:5 }}</td>
+                    <td><input type="number" step="any" class="form-control form-control-sm"
+                               name="magnitude_{{ target.id }}"></td>
+                    {% if needs_temperature %}
+                      <td><input type="number" step="any" class="form-control form-control-sm"
+                                 name="temperature_effective_{{ target.id }}"></td>
+                    {% endif %}
+                    {% if needs_radial_velocity %}
+                      <td><input type="number" step="any" class="form-control form-control-sm"
+                                 name="radial_velocity_kmps_{{ target.id }}"></td>
+                    {% endif %}
+                    <td></td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          {% else %}
+            <p class="text-muted mb-0">None.</p>
+          {% endif %}
+        </div>
+        {% if sync_state.tom_only %}
+          <div class="card-footer">
+            <button class="btn btn-sm btn-outline-primary"
+                    hx-post="{% url 'tom_cfht:sync-selected-targets' program_token %}"
+                    hx-target="#cfht-targets-{{ program_token }}" hx-swap="outerHTML">
+              Sync selected targets to Kealahou
+            </button>
+          </div>
+        {% endif %}
+      </div>
+    </form>
+
+    {# ---- linked and in agreement ---- #}
+    <div class="card mb-3">
+      <div class="card-header bg-success text-white">
+        In both, in sync <span class="badge bg-light text-dark">{{ sync_state.linked_in_sync|length }}</span>
+      </div>
+      <div class="card-body p-2">
+        {% if sync_state.linked_in_sync %}
+          <table class="table table-sm mb-0 cfht-table">
+            {% include 'tom_cfht/partials/target_table_header.html' %}
+            <tbody>
+              {% for pair in sync_state.linked_in_sync %}
+                <tr>
+                  <td></td>
+                  <td class="text-start" title="{{ pair.link.kealahou_target_token }}">
+                    <a href="{% url 'targets:detail' pair.target.id %}">{{ pair.target.name }}</a></td>
+                  <td>{{ pair.target.ra|floatformat:5 }}</td>
+                  <td>{{ pair.target.dec|floatformat:5 }}</td>
+                  <td>{{ pair.required_field_values.magnitude|floatformat:2|default:'—' }}</td>
+                  {% if needs_temperature %}
+                    <td>{{ pair.required_field_values.temperature_effective|floatformat:1|default:'—' }}</td>
+                  {% endif %}
+                  {% if needs_radial_velocity %}
+                    <td>{{ pair.required_field_values.radial_velocity_kmps|floatformat:1|default:'—' }}</td>
+                  {% endif %}
+                  <td></td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% else %}
+          <p class="text-muted mb-0">None.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    {# ---- linked with property discrepancies (displayed, never auto-resolved) ---- #}
+    <div class="card mb-3">
+      <div class="card-header bg-warning text-dark">
+        In both, with discrepancies <span class="badge bg-light text-dark">{{ sync_state.linked_discrepant|length }}</span>
+      </div>
+      <div class="card-body p-2">
+        {% if sync_state.linked_discrepant %}
+          <table class="table table-sm mb-1">
+            <thead><tr><th>Name</th><th>Property</th><th>TOM value</th><th>Kealahou value</th></tr></thead>
+            <tbody>
+              {% for pair in sync_state.linked_discrepant %}
+                {% for discrepancy in pair.discrepancies %}
+                  <tr>
+                    {% if forloop.first %}
+                      <td rowspan="{{ pair.discrepancies|length }}" title="{{ pair.link.kealahou_target_token }}">
+                        <a href="{% url 'targets:detail' pair.target.id %}">{{ pair.target.name }}</a></td>
+                    {% endif %}
+                    <td>{{ discrepancy.field_name }}</td>
+                    <td>{{ discrepancy.tom_value }}</td>
+                    <td>{{ discrepancy.kealahou_value }}</td>
+                  </tr>
+                {% endfor %}
+              {% endfor %}
+            </tbody>
+          </table>
+          <p class="text-muted mb-0"><small>Shown for review; syncing does not overwrite either side.</small></p>
+        {% else %}
+          <p class="text-muted mb-0">None.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    {% endif %}
+  {% endif %}
+</div>

@@ -1,0 +1,95 @@
+{# Observation-form fragment: this target's Kealahou state, ONE program at a time.   #}
+{# A pulldown selects the program when the user has more than one. The program's row #}
+{# shows exactly the next action in the chain: associate a Target Grouping ->        #}
+{# upload -> (rarely) re-add to the Target Grouping -> done.                         #}
+{# Feedback queued by the views: tom_common's messages partial is hx-swap-oob, and htmx #}
+{# only honors OOB at the response's top level -- so it sits OUTSIDE the fragment root, #}
+{# and its content lands in the page-level #messages container.                         #}
+{% include 'tom_common/partials/messages.html' %}
+<div id="kealahou-target-status" class="card mt-3">
+  <div class="card-header">Kealahou status</div>
+  <div class="card-body">
+    {% if error %}
+      {% include 'tom_cfht/partials/kealahou_error_alert.html' %}
+    {% else %}
+
+      {% if program_options|length > 1 %}
+        {# more than one program: an htmx pulldown re-renders this fragment for the selection #}
+        <form class="row row-cols-auto g-2 align-items-center mb-2">
+          <input type="hidden" name="target_id" value="{{ target.id }}">
+          <div class="col"><label class="col-form-label col-form-label-sm">Program:</label></div>
+          <div class="col">
+            <select name="program_token" class="form-select form-select-sm"
+                    hx-get="{% url 'tom_cfht:kealahou-target-status' %}"
+                    hx-include="closest form"
+                    hx-trigger="change"
+                    hx-target="#kealahou-target-status" hx-swap="outerHTML">
+              {% for option in program_options %}
+                <option value="{{ option.program_token }}"
+                        {% if option.program_token == selected_program_token %}selected{% endif %}>
+                  {{ option.program_token }} &mdash; {{ option.title }}
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+        </form>
+      {% endif %}
+
+      {% if program_status %}
+        <div>
+          <strong>{{ program_status.program_token }}</strong> ({{ program_status.instrument }})
+          &mdash; {{ program_status.title }}:
+          {% if program_status.target_grouping_gate %}
+            {% include 'tom_cfht/partials/target_grouping_gate.html' with gate=program_status.target_grouping_gate %}
+          {% elif not program_status.link %}
+            <span class="badge bg-warning text-dark">not in Kealahou</span>
+            <form class="row row-cols-auto g-2 align-items-center mt-1">
+              {% csrf_token %}
+              <input type="hidden" name="target_id" value="{{ target.id }}">
+              <input type="hidden" name="program_token" value="{{ program_status.program_token }}">
+              <div class="col">
+                <input type="number" step="any" class="form-control form-control-sm"
+                       name="magnitude_{{ target.id }}" placeholder="{{ program_status.magnitude_band }} mag" required>
+              </div>
+              {% if program_status.needs_temperature %}
+                <div class="col">
+                  <input type="number" step="any" class="form-control form-control-sm"
+                         name="temperature_effective_{{ target.id }}" placeholder="Teff (K)">
+                </div>
+              {% endif %}
+              {% if program_status.needs_radial_velocity %}
+                <div class="col">
+                  <input type="number" step="any" class="form-control form-control-sm"
+                         name="radial_velocity_kmps_{{ target.id }}" placeholder="RV (km/s)">
+                </div>
+              {% endif %}
+              <div class="col">
+                <button class="btn btn-sm btn-primary"
+                        hx-post="{% url 'tom_cfht:upload-single-target' %}"
+                        hx-target="#kealahou-target-status" hx-swap="outerHTML">
+                  Upload to Kealahou (adds to &ldquo;{{ program_status.association.target_list.name }}&rdquo;)
+                </button>
+              </div>
+            </form>
+          {% elif not program_status.in_target_list %}
+            <span class="badge bg-success" title="{{ program_status.link.kealahou_target_token }}">in Kealahou</span>
+            <form class="d-inline">
+              {% csrf_token %}
+              <input type="hidden" name="target_id" value="{{ target.id }}">
+              <input type="hidden" name="program_token" value="{{ program_status.program_token }}">
+              <button class="btn btn-sm btn-outline-primary"
+                      hx-post="{% url 'tom_cfht:add-target-to-target-grouping' %}"
+                      hx-target="#kealahou-target-status" hx-swap="outerHTML">
+                Add to Target Grouping &ldquo;{{ program_status.association.target_list.name }}&rdquo;
+              </button>
+            </form>
+          {% else %}
+            <span class="badge bg-success" title="{{ program_status.link.kealahou_target_token }}">in Kealahou</span>
+          {% endif %}
+        </div>
+      {% else %}
+        <p class="text-muted mb-0">No Kealahou observing programs found for your account.</p>
+      {% endif %}
+    {% endif %}
+  </div>
+</div>
